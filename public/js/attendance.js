@@ -369,36 +369,53 @@ function changeMonth(classId, delta) {
 /* ---------- User Management ---------- */
 async function loadUserInfo() {
   try {
-    // First, try to get user info from localStorage
-    const storedName = localStorage.getItem('userName');
-    const storedRole = localStorage.getItem('userRole');
-    
-    if (storedName) {
-      document.getElementById('userName').textContent = storedName;
-      document.getElementById('userRole').textContent = storedRole ? storedRole.charAt(0).toUpperCase() + storedRole.slice(1) : 'Student';
-    }
-    
-    // Then try to fetch from API to update with fresh data
-    const response = await fetch('/api/user');
-    
+    // Always prefer fresh data from the server
+    const response = await fetch('/api/current-user', { credentials: 'same-origin' });
+
     if (response.ok) {
       const data = await response.json();
-      document.getElementById('userName').textContent = data.user.name;
-      document.getElementById('userRole').textContent = data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1);
-      
-      // Update localStorage with fresh data
-      localStorage.setItem('userName', data.user.name);
-      localStorage.setItem('userEmail', data.user.email);
-      localStorage.setItem('userRole', data.user.role);
-    } else if (!storedName) {
-      // Only redirect to login if no stored name and API fails
+      if (data && data.user) {
+        const name = data.user.name || 'User';
+        const role = (data.user.role || 'student');
+
+        // Update DOM
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        if (nameEl) nameEl.textContent = name;
+        if (roleEl) roleEl.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+
+        // Sync localStorage to server truth
+        localStorage.setItem('userName', name);
+        localStorage.setItem('userRole', role);
+        if (data.user.email) localStorage.setItem('userEmail', data.user.email);
+        if (data.user.id) localStorage.setItem('userId', data.user.id);
+        return;
+      }
+    }
+
+    // If server call didn't work, fallback to localStorage
+    const storedName = localStorage.getItem('userName');
+    const storedRole = localStorage.getItem('userRole') || 'student';
+    if (storedName) {
+      const nameEl = document.getElementById('userName');
+      const roleEl = document.getElementById('userRole');
+      if (nameEl) nameEl.textContent = storedName;
+      if (roleEl) roleEl.textContent = storedRole.charAt(0).toUpperCase() + storedRole.slice(1);
+    } else {
+      // Nothing to show, redirect to login
       window.location.href = '/login';
     }
   } catch (error) {
     console.error('Error loading user info:', error);
-    // If there's an error but we have stored name, use it
+    // Fallback
     const storedName = localStorage.getItem('userName');
-    if (!storedName) {
+    const storedRole = localStorage.getItem('userRole');
+    if (storedName) {
+      const nameEl = document.getElementById('userName');
+      const roleEl = document.getElementById('userRole');
+      if (nameEl) nameEl.textContent = storedName;
+      if (roleEl) roleEl.textContent = (storedRole || 'student').charAt(0).toUpperCase() + (storedRole || 'student').slice(1);
+    } else {
       window.location.href = '/login';
     }
   }
@@ -432,16 +449,8 @@ window.addEventListener('load', () => {
   window.changeMonth = changeMonth;
   console.log('showAttendance and changeMonth functions assigned to window');
   
-  // Immediately load stored user name before anything else
-  const storedName = localStorage.getItem('userName');
-  const storedRole = localStorage.getItem('userRole');
-  
-  if (storedName) {
-    document.getElementById('userName').textContent = storedName;
-  }
-  if (storedRole) {
-    document.getElementById('userRole').textContent = storedRole.charAt(0).toUpperCase() + storedRole.slice(1);
-  }
+  // NOTE: User name/role is now handled by the inline script in att.html
+  // which fetches fresh data from /api/current-user
   
   // Load user information from API
   loadUserInfo();

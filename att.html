@@ -3,11 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>College Attendance Dashboard</title>
 <link rel="stylesheet" href="public/css/styles.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+<script>
+// Clear stale localStorage IMMEDIATELY before anything renders
+if (localStorage.getItem('userName') === 'asdf') {
+  console.log('🧹 Clearing stale localStorage data');
+  localStorage.clear();
+}
+</script>
 <header>
   <div class="logo">
     <img src="https://i.postimg.cc/0yBYV4MJ/unnamed-removebg-preview.jpg" alt="Logo">
@@ -18,43 +28,15 @@
   </div>
   <div class="user-menu">
     <div class="user-info">
-      <span class="user-name" id="userName">User</span>
-      <span class="user-role" id="userRole">Student</span>
+      <span class="user-name" id="userName">Loading...</span>
+      <span class="user-role" id="userRole">...</span>
     </div>
-    <a href="/login" class="logout-btn">
+    <a href="/logout" class="logout-btn">
       <i class="fas fa-sign-out-alt"></i>
       Logout
     </a>
   </div>
 </header>
-
-<script>
-// Immediately set user name from localStorage before page fully loads
-(function() {
-  const storedName = localStorage.getItem('userName');
-  const storedRole = localStorage.getItem('userRole');
-  
-  // Wait for DOM to be ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      if (storedName) {
-        document.getElementById('userName').textContent = storedName;
-      }
-      if (storedRole) {
-        document.getElementById('userRole').textContent = storedRole.charAt(0).toUpperCase() + storedRole.slice(1);
-      }
-    });
-  } else {
-    // DOM is already ready
-    if (storedName) {
-      document.getElementById('userName').textContent = storedName;
-    }
-    if (storedRole) {
-      document.getElementById('userRole').textContent = storedRole.charAt(0).toUpperCase() + storedRole.slice(1);
-    }
-  }
-})();
-</script>
 
 <div class="container">
   <div class="class-card" onclick="showAttendance('cs301')">
@@ -79,6 +61,69 @@
     <div class="attendance-detail" id="cs302"></div>
   </div>
 </div>
+
+<script>
+// Fetch current user info from server
+(function() {
+  console.log('🔍 Script running - fetching user data...');
+  
+  // Get DOM elements
+  const userNameElement = document.getElementById('userName');
+  const userRoleElement = document.getElementById('userRole');
+  
+  console.log('📝 Elements found:', userNameElement, userRoleElement);
+  
+  // Fetch user data from the server
+  fetch('/api/current-user')
+    .then(response => {
+      console.log('📡 Response status:', response.status);
+      if (!response.ok) {
+        throw new Error('Not authenticated');
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('✅ User data received:', data);
+      if (data.success && data.user) {
+        const userName = data.user.name || 'User';
+        const userRole = data.user.role || 'student';
+        
+        console.log('👤 Setting userName to:', userName);
+        console.log('🎭 Setting userRole to:', userRole);
+        
+        // Aggressively update display using multiple methods
+        userNameElement.textContent = userName;
+        userNameElement.innerHTML = userName;
+        userNameElement.innerText = userName;
+        
+        userRoleElement.textContent = userRole.charAt(0).toUpperCase() + userRole.slice(1);
+        userRoleElement.innerHTML = userRole.charAt(0).toUpperCase() + userRole.slice(1);
+        userRoleElement.innerText = userRole.charAt(0).toUpperCase() + userRole.slice(1);
+        
+        // Force a reflow
+        userNameElement.style.display = 'none';
+        userNameElement.offsetHeight; // Force reflow
+        userNameElement.style.display = '';
+        
+        // Clear old localStorage and update with new data
+        localStorage.clear();
+        localStorage.setItem('userName', userName);
+        localStorage.setItem('userRole', userRole);
+        localStorage.setItem('userId', data.user.id);
+        localStorage.setItem('userEmail', data.user.email);
+        
+        console.log('✨ Display updated successfully!');
+        console.log('📊 Final userName element:', userNameElement.textContent);
+        console.log('📊 Final userRole element:', userRoleElement.textContent);
+      }
+    })
+    .catch(error => {
+      console.error('❌ Error fetching user data:', error);
+      // If not authenticated, redirect to login
+      window.location.href = '/login';
+    });
+})();
+</script>
 
 <script src="/public/js/attendance.js"></script>
 </body>

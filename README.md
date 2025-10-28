@@ -4,7 +4,8 @@ A modern web-based attendance management system built with Node.js, Express, Mon
 
 ## 🚀 Features
 
-- **User Authentication**: Secure registration and login system
+- **User Authentication**: Secure registration and login system with Google OAuth support
+- **Google Sign-In**: Quick authentication using your Google account
 - **Attendance Tracking**: Interactive calendar interface for marking attendance
 - **Dashboard**: Visual attendance statistics and progress tracking
 - **Responsive Design**: Works on desktop and mobile devices
@@ -39,6 +40,9 @@ This will install the required packages:
 - `mongoose` - MongoDB object modeling
 - `bcryptjs` - Password hashing
 - `dotenv` - Environment variable management
+- `passport` - Authentication middleware
+- `passport-google-oauth20` - Google OAuth 2.0 strategy
+- `express-session` - Session management
 
 ### 3. Environment Configuration
 
@@ -59,8 +63,16 @@ MONGODB_URI=mongodb+srv://your-username:your-password@your-cluster.mongodb.net/a
 # Server Configuration
 PORT=3000
 
-# Optional: Add any other environment variables here
+# Session Secret (change this to a random string)
+SESSION_SECRET=your-secret-key-change-this-in-production
+
+# Google OAuth Configuration (Optional - see GOOGLE_OAUTH_SETUP.md for setup)
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
 ```
+
+**Note**: To enable Google Sign-In, follow the detailed setup guide in [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md)
 
 ### 4. MongoDB Setup
 
@@ -112,9 +124,14 @@ Attendance/
 ├── app.js                 # Main server file
 ├── package.json           # Project dependencies
 ├── .env                   # Environment variables (create this)
+├── .env.example          # Example environment variables
 ├── .gitignore            # Git ignore rules
 ├── att.html              # Main dashboard page
 ├── test-setup.js         # Test configuration
+├── README.md             # This file
+├── GOOGLE_OAUTH_SETUP.md # Google OAuth setup guide
+├── config/
+│   └── passport.js       # Passport authentication configuration
 ├── models/
 │   └── User.js           # User data model
 ├── views/
@@ -126,7 +143,6 @@ Attendance/
 │   │   └── auth.css      # Authentication styles
 │   └── js/
 │       └── attendance.js # Frontend JavaScript
-└── README.md            # This file
 ```
 
 ## 🎯 Usage
@@ -136,6 +152,14 @@ Attendance/
 1. Navigate to `/register.html`
 2. Fill in username, email, and password
 3. Click "Sign Up" to create account
+4. **OR** Click "Continue with Google" for quick registration
+
+### User Login
+
+1. Navigate to `/login.html`
+2. Enter your credentials
+3. Click "Sign In" to access dashboard
+4. **OR** Click "Continue with Google" to sign in with your Google account
 
 ### User Login
 
@@ -156,6 +180,10 @@ Attendance/
 
 - `POST /api/register` - Register new user
 - `POST /api/login` - User login
+- `GET /auth/google` - Initiate Google OAuth flow
+- `GET /auth/google/callback` - Google OAuth callback
+- `GET /logout` - Logout user
+- `GET /api/current-user` - Get current authenticated user
 - `GET /api/user/:userId` - Get user details
 
 ### Attendance

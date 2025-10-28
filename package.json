@@ -17,8 +17,10 @@
   },
   "homepage": "https://github.com/Amogh-GC/Attendance#readme",
   "dependencies": {
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "express-session": "^1.18.2",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
   },
-  "devDependencies": {},
   "description": ""
 }

@@ -5,6 +5,8 @@ const express = require('express');
 const path = require('path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const session = require('express-session');
+const passport = require('./config/passport');
 const User = require('./models/User');
 
 const app = express();
@@ -27,13 +29,42 @@ mongoose.connect(MONGODB_URI)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Serve static files from 'public' directory
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Authentication middleware
-// No authentication middleware needed - just redirect to login on protected routes
+const isAuthenticated = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.redirect('/login');
+};
 
 // Routes
+
+// Home/Dashboard - Protected
+app.get('/', isAuthenticated, (req, res) => {
+  res.sendFile(path.join(__dirname, 'att.html'));
+});
+
+app.get('/att.html', isAuthenticated, (req, res) => {
+  res.sendFile(path.join(__dirname, 'att.html'));
+});
 
 // Login page
 app.get('/login', (req, res) => {
@@ -43,6 +74,62 @@ app.get('/login', (req, res) => {
 // Register page
 app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'register.html'));
+});
+
+// Google OAuth Routes
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Successful authentication, redirect to dashboard
+    res.redirect('/att.html');
+  }
+);
+
+// Logout route
+app.get('/logout', (req, res) => {
+  req.logout((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+    }
+    res.redirect('/login');
+  });
+});
+
+// Get current user info
+app.get('/api/current-user', (req, res) => {
+  console.log('📍 /api/current-user called');
+  console.log('🔍 isAuthenticated:', req.isAuthenticated());
+  console.log('👤 User:', req.user);
+  
+  if (req.isAuthenticated()) {
+    res.json({
+      success: true,
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role || 'student',
+        profilePicture: req.user.profilePicture,
+        authProvider: req.user.authProvider
+      }
+    });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
+});
+
+// Debug endpoint to check user in database
+app.get('/api/debug-user/:email', async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email.toLowerCase() });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Login POST
@@ -68,14 +155,23 @@ app.post('/api/login', async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    res.json({ 
-      success: true, 
-      message: 'Login successful',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email
+    // Log the user in using Passport (creates session)
+    req.login(user, (err) => {
+      if (err) {
+        console.error('Session creation error:', err);
+        return res.status(500).json({ error: 'Failed to create session' });
       }
+
+      res.json({ 
+        success: true, 
+        message: 'Login successful',
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        }
+      });
     });
   } catch (error) {
     console.error('Login error:', error);
