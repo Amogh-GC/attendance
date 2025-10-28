@@ -5,6 +5,8 @@ const express = require('express');
 const path = require('path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
+const jwt = require('jsonwebtoken');
 const session = require('express-session');
 const passport = require('./config/passport');
 const User = require('./models/User');
@@ -28,6 +30,7 @@ mongoose.connect(MONGODB_URI)
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Session configuration
 app.use(session({
@@ -42,17 +45,56 @@ app.use(session({
 
 // Initialize Passport
 app.use(passport.initialize());
+// Only enable session-based passport in non-serverless/local dev scenarios
 app.use(passport.session());
 
 // Serve static files from 'public' directory
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
-// Authentication middleware
+// JWT helpers (stateless auth suitable for Vercel)
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'dev-secret-change-me';
+
+function setAuthCookie(res, user) {
+  const token = jwt.sign(
+    {
+      id: user._id?.toString?.() || user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role || 'student',
+    },
+    JWT_SECRET,
+    { expiresIn: '1d' }
+  );
+  res.cookie('auth', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+    path: '/',
+  });
+}
+
+function getUserFromToken(req) {
+  const token = req.cookies?.auth;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Authentication middleware (prefer JWT; fallback to passport session)
 const isAuthenticated = (req, res, next) => {
-  if (req.isAuthenticated()) {
+  const authUser = getUserFromToken(req);
+  if (authUser) {
+    req.authUser = authUser;
     return next();
   }
-  res.redirect('/login');
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    return next();
+  }
+  return res.redirect('/login');
 };
 
 // Routes
@@ -82,31 +124,46 @@ app.get('/auth/google',
 );
 
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   (req, res) => {
-    // Successful authentication, redirect to dashboard
+    // Set JWT cookie and redirect to dashboard
+    if (req.user) {
+      setAuthCookie(res, req.user);
+    }
     res.redirect('/att.html');
   }
 );
 
 // Logout route
 app.get('/logout', (req, res) => {
-  req.logout((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-    }
-    res.redirect('/login');
-  });
+  try {
+    res.clearCookie('auth', { path: '/' });
+  } catch (e) {
+    // ignore
+  }
+  if (req.logout) {
+    req.logout(() => {});
+  }
+  res.redirect('/login');
 });
 
 // Get current user info
 app.get('/api/current-user', (req, res) => {
-  console.log('📍 /api/current-user called');
-  console.log('🔍 isAuthenticated:', req.isAuthenticated());
-  console.log('👤 User:', req.user);
-  
-  if (req.isAuthenticated()) {
-    res.json({
+  const tokenUser = getUserFromToken(req);
+  if (tokenUser) {
+    return res.json({
+      success: true,
+      user: {
+        id: tokenUser.id,
+        name: tokenUser.name,
+        email: tokenUser.email,
+        role: tokenUser.role || 'student',
+      }
+    });
+  }
+
+  if (req.isAuthenticated && req.isAuthenticated() && req.user) {
+    return res.json({
       success: true,
       user: {
         id: req.user._id,
@@ -117,9 +174,8 @@ app.get('/api/current-user', (req, res) => {
         authProvider: req.user.authProvider
       }
     });
-  } else {
-    res.status(401).json({ error: 'Not authenticated' });
   }
+  return res.status(401).json({ error: 'Not authenticated' });
 });
 
 // Debug endpoint to check user in database
@@ -151,27 +207,22 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Update last login
+    // Update last login and persist
     user.lastLogin = new Date();
     await user.save();
 
-    // Log the user in using Passport (creates session)
-    req.login(user, (err) => {
-      if (err) {
-        console.error('Session creation error:', err);
-        return res.status(500).json({ error: 'Failed to create session' });
-      }
+    // Set stateless auth cookie (works on Vercel); keep response body for frontend
+    setAuthCookie(res, user);
 
-      res.json({ 
-        success: true, 
-        message: 'Login successful',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
-      });
+    res.json({ 
+      success: true, 
+      message: 'Login successful',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
