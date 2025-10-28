@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -17,8 +19,11 @@
   },
   "homepage": "https://github.com/Amogh-GC/Attendance#readme",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "express-session": "^1.18.2",
+    "mongoose": "^8.19.2",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0"
   },
