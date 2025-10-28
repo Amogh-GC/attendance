@@ -49,7 +49,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Serve static files from 'public' directory
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // JWT helpers (stateless auth suitable for Vercel)
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'dev-secret-change-me';
