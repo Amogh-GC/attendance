@@ -371,6 +371,180 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Get attendance data for the current user
+app.get('/api/attendance', isAuthenticated, async (req, res) => {
+  try {
+    const tokenUser = getUserFromToken(req);
+    const userId = tokenUser?.id || req.user?._id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Convert Maps to plain objects for JSON serialization
+    const attendanceData = {};
+    const offDaysData = {};
+
+    if (user.attendanceData) {
+      user.attendanceData.forEach((monthData, classId) => {
+        attendanceData[classId] = {};
+        if (monthData instanceof Map) {
+          monthData.forEach((days, monthKey) => {
+            attendanceData[classId][monthKey] = days;
+          });
+        } else if (typeof monthData === 'object') {
+          attendanceData[classId] = monthData;
+        }
+      });
+    }
+
+    if (user.offDaysData) {
+      user.offDaysData.forEach((monthData, classId) => {
+        offDaysData[classId] = {};
+        if (monthData instanceof Map) {
+          monthData.forEach((days, monthKey) => {
+            offDaysData[classId][monthKey] = days;
+          });
+        } else if (typeof monthData === 'object') {
+          offDaysData[classId] = monthData;
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      attendanceData,
+      offDaysData
+    });
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Save attendance data for the current user
+app.post('/api/attendance', isAuthenticated, async (req, res) => {
+  try {
+    const tokenUser = getUserFromToken(req);
+    const userId = tokenUser?.id || req.user?._id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { attendanceData, offDaysData } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update attendance data
+    if (attendanceData) {
+      user.attendanceData = new Map();
+      Object.keys(attendanceData).forEach(classId => {
+        const monthMap = new Map();
+        Object.keys(attendanceData[classId]).forEach(monthKey => {
+          monthMap.set(monthKey, attendanceData[classId][monthKey]);
+        });
+        user.attendanceData.set(classId, monthMap);
+      });
+    }
+
+    // Update off days data
+    if (offDaysData) {
+      user.offDaysData = new Map();
+      Object.keys(offDaysData).forEach(classId => {
+        const monthMap = new Map();
+        Object.keys(offDaysData[classId]).forEach(monthKey => {
+          monthMap.set(monthKey, offDaysData[classId][monthKey]);
+        });
+        user.offDaysData.set(classId, monthMap);
+      });
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Attendance data saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving attendance:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Toggle attendance for a specific day
+app.post('/api/attendance/toggle', isAuthenticated, async (req, res) => {
+  try {
+    const tokenUser = getUserFromToken(req);
+    const userId = tokenUser?.id || req.user?._id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { classId, monthKey, day, type } = req.body; // type: 'absent' or 'off'
+
+    if (!classId || !monthKey || !day || !type) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Initialize maps if they don't exist
+    if (!user.attendanceData) {
+      user.attendanceData = new Map();
+    }
+    if (!user.offDaysData) {
+      user.offDaysData = new Map();
+    }
+
+    const dataMap = type === 'absent' ? user.attendanceData : user.offDaysData;
+
+    // Get or create the class map
+    let classMap = dataMap.get(classId);
+    if (!classMap) {
+      classMap = new Map();
+      dataMap.set(classId, classMap);
+    }
+
+    // Get or create the month array
+    let daysArray = classMap.get(monthKey) || [];
+    
+    // Toggle the day
+    const dayIndex = daysArray.indexOf(day);
+    if (dayIndex > -1) {
+      daysArray.splice(dayIndex, 1); // Remove if exists
+    } else {
+      daysArray.push(day); // Add if doesn't exist
+      daysArray.sort((a, b) => a - b); // Keep sorted
+    }
+
+    classMap.set(monthKey, daysArray);
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Attendance toggled successfully',
+      daysArray
+    });
+  } catch (error) {
+    console.error('Error toggling attendance:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).redirect('/login');

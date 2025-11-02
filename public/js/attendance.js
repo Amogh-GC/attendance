@@ -9,18 +9,100 @@
 const semesterStart = new Date(2025, 6, 27); // July 27, 2025
 const semesterEnd   = new Date(2025, 10, 22); // Nov 22, 2025
 
-const attendanceData = {
-  cs301: { "2025-07": [28,30], "2025-09": [1,2,4,5], "2025-10": [1,2] },
-  cs302: { "2025-09": [3,6], "2025-10": [1] }
-};
-
-const offDaysData = {
-  cs301: { "2025-09": [7,14], "2025-10": [3] },
-  cs302: { "2025-09": [8], "2025-10": [5] }
-};
+// Initialize empty data - will be loaded from server
+let attendanceData = {};
+let offDaysData = {};
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const classState = {}; // will hold { month, year } for each class
+
+/* ---------- Load attendance data from server ---------- */
+async function loadAttendanceData() {
+  try {
+    const response = await fetch('/api/attendance', { credentials: 'same-origin' });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        attendanceData = data.attendanceData || {};
+        offDaysData = data.offDaysData || {};
+        
+        // Ensure all classes have empty objects if no data
+        ['cs301', 'cs302'].forEach(classId => {
+          if (!attendanceData[classId]) attendanceData[classId] = {};
+          if (!offDaysData[classId]) offDaysData[classId] = {};
+        });
+        
+        console.log('✅ Attendance data loaded from server');
+        updateCardStats();
+      }
+    }
+  } catch (error) {
+    console.error('Error loading attendance data:', error);
+    // Initialize empty data if load fails
+    attendanceData = { cs301: {}, cs302: {} };
+    offDaysData = { cs301: {}, cs302: {} };
+    updateCardStats();
+  }
+}
+
+/* ---------- Save attendance data to server ---------- */
+async function saveAttendanceData() {
+  try {
+    const response = await fetch('/api/attendance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        attendanceData,
+        offDaysData
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ Attendance data saved to server');
+      return true;
+    } else {
+      console.error('Failed to save attendance data');
+      return false;
+    }
+  } catch (error) {
+    console.error('Error saving attendance data:', error);
+    return false;
+  }
+}
+
+/* ---------- Toggle day status (Present/Absent) ---------- */
+async function toggleDayStatus(classId, day, month, year, type = 'absent') {
+  const key = monthKey(year, month);
+  const dataObj = type === 'absent' ? attendanceData : offDaysData;
+  
+  // Initialize if doesn't exist
+  if (!dataObj[classId]) dataObj[classId] = {};
+  if (!dataObj[classId][key]) dataObj[classId][key] = [];
+  
+  const daysArray = dataObj[classId][key];
+  const dayIndex = daysArray.indexOf(day);
+  
+  if (dayIndex > -1) {
+    daysArray.splice(dayIndex, 1); // Mark as present (remove from absent list)
+  } else {
+    daysArray.push(day); // Mark as absent (add to absent list)
+    daysArray.sort((a, b) => a - b);
+  }
+  
+  // Save to server
+  await saveAttendanceData();
+  
+  // Refresh the calendar display
+  const { month: currentMonth, year: currentYear } = classState[classId];
+  document.getElementById(classId).innerHTML = renderCalendar(classId, currentMonth, currentYear);
+  
+  // Update stats
+  updateCardStats();
+}
 
 /* ---------- Helpers ---------- */
 function monthKey(year, month) {
@@ -231,6 +313,7 @@ function renderCalendar(classId, month, year) {
     let classes = "";
     let status = "";
     let tooltip = `${dayName}, ${months[month]} ${day}, ${year}`;
+    let clickable = false;
 
     if (!inSemester) {
       classes = "muted";
@@ -246,17 +329,20 @@ function renderCalendar(classId, month, year) {
         status = "🎯";
         tooltip += " - Weekend";
       } else if (offDays.includes(day)) {
-        classes = "off";
+        classes = "off clickable";
         status = "🏖️";
-        tooltip += " - Holiday/Off day";
+        tooltip += " - Holiday/Off day (Click to toggle)";
+        clickable = true;
       } else if (absentDays.includes(day)) {
-        classes = "absent";
+        classes = "absent clickable";
         status = "❌";
-        tooltip += " - Absent";
+        tooltip += " - Absent (Click to mark Present)";
+        clickable = true;
       } else {
-        classes = "present";
+        classes = "present clickable";
         status = "✅";
-        tooltip += " - Present";
+        tooltip += " - Present (Click to mark Absent)";
+        clickable = true;
       }
     }
 
@@ -265,7 +351,9 @@ function renderCalendar(classId, month, year) {
       tooltip += " - Today";
     }
 
-    html += `<div class="${classes}" title="${tooltip}">
+    const clickHandler = clickable ? ` onclick="event.stopPropagation(); toggleDayStatus('${classId}', ${day}, ${month}, ${year}, 'absent')"` : '';
+
+    html += `<div class="${classes}" title="${tooltip}"${clickHandler}>
       <div class="day-number">${day}</div>
       <div class="day-status">${status}</div>
     </div>`;
@@ -273,8 +361,8 @@ function renderCalendar(classId, month, year) {
 
   html += `</div>
     <div class="legend">
-      <span><div style="background:#e6ffe6; border:1px solid #00cc66"></div> Present ✅</span>
-      <span><div style="background:#ffe5e5; border:1px solid #cc0000"></div> Absent ❌</span>
+      <span><div style="background:#e6ffe6; border:1px solid #00cc66"></div> Present ✅ (Click to toggle)</span>
+      <span><div style="background:#ffe5e5; border:1px solid #cc0000"></div> Absent ❌ (Click to toggle)</span>
       <span><div style="background:#f4f4f4; border:1px solid #ddd"></div> Holiday 🏖️</span>
       <span><div style="background:#e6f3ff; border:1px solid #007bff"></div> Weekend 🎯</span>
       <span><div style="border:2px solid #00cc66"></div> Today</span>
@@ -283,6 +371,7 @@ function renderCalendar(classId, month, year) {
       <p><strong>Semester:</strong> ${semesterStart.toDateString()} — ${semesterEnd.toDateString()}</p>
       <p><strong>Subject:</strong> ${classId.toUpperCase()} - ${classId === 'cs301' ? 'Compiler Design' : 'Database Management Systems'}</p>
       <p><strong>Faculty:</strong> ${classId === 'cs301' ? 'Dr. T. Sugritha' : 'Dr. M. Ambika'}</p>
+      <p style="margin-top: 12px; color: #10b981; font-weight: 600;"><i class="fas fa-info-circle"></i> Click on any day to mark your attendance!</p>
     </div>
   </div>`;
 
@@ -441,19 +530,20 @@ async function logout() {
 }
 
 /* ---------- init ---------- */
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   console.log('Window loaded, initializing...');
   
-  // Make showAttendance globally available
+  // Make functions globally available
   window.showAttendance = showAttendance;
   window.changeMonth = changeMonth;
-  console.log('showAttendance and changeMonth functions assigned to window');
-  
-  // NOTE: User name/role is now handled by the inline script in att.html
-  // which fetches fresh data from /api/current-user
+  window.toggleDayStatus = toggleDayStatus;
+  console.log('Functions assigned to window');
   
   // Load user information from API
-  loadUserInfo();
+  await loadUserInfo();
+  
+  // Load attendance data from server
+  await loadAttendanceData();
   
   // ensure every class has a clamped initial month visible if you open it
   Object.keys(attendanceData).forEach(classId => {
@@ -461,6 +551,5 @@ window.addEventListener('load', () => {
     classState[classId] = { month: clamped.month, year: clamped.year };
   });
 
-  updateCardStats();
   console.log('Initialization complete');
 });

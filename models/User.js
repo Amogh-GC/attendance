@@ -83,6 +83,19 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordExpires: {
     type: Date
+  },
+  // Store attendance data per student
+  attendanceData: {
+    type: Map,
+    of: Map,
+    default: {}
+    // Structure: { "cs301": { "2025-07": [28,30], "2025-09": [1,2,4,5] }, "cs302": {...} }
+  },
+  offDaysData: {
+    type: Map,
+    of: Map,
+    default: {}
+    // Structure: { "cs301": { "2025-09": [7,14] }, "cs302": {...} }
   }
 }, {
   timestamps: true

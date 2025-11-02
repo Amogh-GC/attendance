@@ -642,6 +642,21 @@ header p {
   border-width: 3px !important;
 }
 
+.calendar > div.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.calendar > div.clickable:hover {
+  transform: scale(1.15);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  filter: brightness(1.1);
+}
+
+.calendar > div.clickable:active {
+  transform: scale(1.05);
+}
+
 .calendar > div:hover {
   transform: scale(1.1);
   z-index: 10;
